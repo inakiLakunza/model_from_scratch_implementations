@@ -1,13 +1,7 @@
 
 
 import numpy as np
-
-
-def ReLU(x: np.array) -> np.array:
-    return np.maximum(0, x)
-
-def Sigmoid(x: np.array) -> np.array:
-    return 1 / (1 + np.exp(-x))
+from activation_functions import *
 
 
 allowed_activations = {
