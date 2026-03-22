@@ -165,6 +165,7 @@ class Block:
 class Model:
 
     def __init__(self, vocab_size, block_size, dim=512, n_blocks=6):
+        self.block_size = block_size
         self.embed = Embedding(vocab_size, block_size, dim)
         self.blocks = [Block(dim) for _ in range(n_blocks)]
         self.norm = LayerNorm(dim)
@@ -180,6 +181,55 @@ class Model:
         x = self.linear.forward(x)
         return x
 
+
+    def generate(self, tokens, max_new_tokens):
+
+        for _ in range(max_new_tokens):
+            context = tokens[:, -self.block_size:]
+            
+            logits = self.forward(context)
+            logits = logits[:, -1, :] # last token
+
+            probs = Softmax(logits)
+            next_token = np.random.choice(len(probs[0]), p=probs[0])
+
+            tokens = np.concatenate(
+                [tokens, np.array([[next_token]])], axis=1
+            )
+
+            return tokens
+
+
+
+
+def cross_entropy_loss(logits, targets):
+    # logits: [B, T, vocab_size]
+    # targets: [B, T]
+
+    # shift by 1: input predicts next token
+    logits = logits[:, :-1, :] # [B, T-1, vocab_size]
+    targets = targets[:, 1:] # [B, T-1]
+
+    B, T, V = logits.shape
+    N = B * T
+
+    logits_flat = logits.reshape(N, V)
+    targets_flat = targets.reshape(N)
+
+    logits_flast -= logits_flat.max(axis=-1, keepdims=True)
+
+    exp = np.exp(logits_flat)
+    probs = exp / exp.sum(axis=-1, keepdims=True) # [N, V]
+
+    loss = -np.log(probs[np.arange(N), targets_flat] + 1e-9).mean()
+
+    dlogits = probs.copy()
+    dlogits[np.arange(N), targets_flat] = -1
+    dlogits /= N
+
+    dlogits = dlogits.reshape(B, T, V)
+
+    return loss, dlogits
 
 
 
