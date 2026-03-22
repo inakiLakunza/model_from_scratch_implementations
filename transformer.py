@@ -1,13 +1,50 @@
 
 import numpy as np
 
+from activation_functions import Softmax, ReLU
 
-def softmax(x):
-    x = x - np.max(x, axis=-1, keepdims=True) # for numerical stability
-    e_x = np.exp(x)
-    return e_x / np.sum(e_x, axis=-1, keepdims=True)
+
+
+class TokenEmbedding:
+
+    def __init__(self, vocab_size, dim):
+        self.embedding = np.random.uniform(-0.5, 0.5, [vocab_size, dim])
+    
+    def forward(self, x):
+        # x: [B, block]
+        return self.embedding[x] # [B, block, dim]
     
 
+class PositionalEmbedding:
+
+    def __init__(self, block_size, dim):
+        pe = np.zeros([block_size, dim])
+
+        pos = np.arange(block_size).reshape(-1, 1)
+        i = np.arange(0, dim, 2)
+        div = np.power(10000, i / dim)
+
+        pe[:, 0::2] = np.sin(pos / div) # even dims -> sin
+        pe[:, 1::2] = np.cos(pos / div) # odd dims  -> cos
+
+        self.embedding = pe
+
+    def forward(self, x):
+        B, T, D = x.shape
+        return self.embedding[:T, :]
+
+
+class Embedding:
+
+    def __init__(self, vocab_size, block_size, dim):
+        self.token_emb = TokenEmbedding(vocab_size, dim)
+        self.pos_emb = PositionalEmbedding(block_size, dim)
+
+    def forward(self, x):
+        # x: [B, block size]
+        tok = self.token_emb.forward(x)
+        pos = self.pos_emb.forward(tok)
+        return tok + pos
 
 
 class Linear:
@@ -28,6 +65,21 @@ class Linear:
         return out
 
 
+class FeedForward:
+
+    def __init__(self, dim):
+        self.upscale = Linear(dim, dim * 4)
+        self.downscale = Linear(dim * 4, dim)
+
+    def forward(self, x):
+        # x: [B, block, dim=512]
+        out = self.upscale.forward(x)
+        # out: [B, block, 2048]
+        out = ReLU(out)
+        out = self.downscale.forward(out)
+        # out: [B, block, 2048]
+        return out
+
 
 class Head:
 
@@ -40,7 +92,7 @@ class Head:
         self.Wv = np.random.uniform(-0.5, 0.5, [self.dim, self.head_dim])
 
 
-    def forward(self, x: np.array) -> np.array:
+    def forward(self, x: np.array, mask: bool = True) -> np.array:
 
         # x: [B, block, dim]
 
@@ -53,8 +105,13 @@ class Head:
         e = e / np.sqrt(self.head_dim)
         # e: [B, block, block]
         
+        if mask:
+            T = e.shape[-1]
+            causal_mask = np.triu(np.ones((T, T)), k=1).astype(bool)
+            e = np.where(causal_mask, -np.inf, e)
+
         # softmax
-        e = softmax(e)
+        e = Softmax(e)
 
         # attention
         # e: [B, block, block]
@@ -73,6 +130,53 @@ class MultiHead:
 
     def forward(self, x):
         x = np.concatenate([head.forward(x) for head in self.heads], axis=-1)
+        x = self.linear.forward(x)
+        return x
+    
+
+class LayerNorm:
+    def __init__(self, dim, eps=1e-5):
+        self.gamma = np.ones(dim)   # scale — initialized to 1
+        self.beta  = np.zeros(dim)  # shift — initialized to 0
+        self.eps   = eps
+
+    def forward(self, x):
+        # x: [B, block, dim]
+        mean = x.mean(axis=-1, keepdims=True)
+        var  = x.var(axis=-1, keepdims=True)
+        x_norm = (x - mean) / np.sqrt(var + self.eps)
+        return self.gamma * x_norm + self.beta  # [B, block, dim]
+
+
+class Block:
+
+    def __init__(self, dim):
+        self.mha = MultiHead(dim=512, n_heads=8)
+        self.ff = FeedForward(dim=512)
+        self.ln1 = LayerNorm(dim=512)
+        self.ln2 = LayerNorm(dim=512)
+
+    def forward(self, x):
+        x = x + self.mha.forward(self.ln1.forward(x))
+        x = x + self.ff.forward(self.ln2.forward(x))
+        return x
+
+
+class Model:
+
+    def __init__(self, vocab_size, block_size, dim=512, n_blocks=6):
+        self.embed = Embedding(vocab_size, block_size, dim)
+        self.blocks = [Block(dim) for _ in range(n_blocks)]
+        self.norm = LayerNorm(dim)
+        self.linear = Linear(dim, vocab_size)
+
+    def forward(self, x):
+        # x: [B, block]
+        x = self.embed.forward(x)
+        # x: [B, block, dim]
+        for block in self.blocks:
+            x = block.forward(x)
+        x = self.norm.forward(x)
         x = self.linear.forward(x)
         return x
 
