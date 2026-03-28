@@ -64,8 +64,8 @@ class OutputLayer(Layer):
         self.z = self.W @ x + self.b
         return self.activation.forward(self.z)
     
-    def backward(self, y_true, y_pred):
-        d_z = y_pred - y_true
+    def backward(self, d_loss):
+        d_z = self.activation.backward(d_loss)
         self.dW = d_z @ self.input.T
         self.db = d_z
         return self.W.T @ d_z
@@ -77,7 +77,7 @@ class OutputLayer(Layer):
 
 class Model():
 
-    def __init__(self, input_dim = 4, hidden_dims = [8, 16, 32, 64, 32, 16, 8]):
+    def __init__(self, input_dim = 4, hidden_dims = [8, 16, 32, 64, 32, 16, 8], loss=BCELoss):
         self.input_layer = InputLayer(input_dim)
         self.hidden_layers = []
         prev = input_dim
@@ -85,7 +85,7 @@ class Model():
             self.hidden_layers.append(HiddenLayer(prev, dim))
             prev = dim
         self.output_layer = OutputLayer(prev)
-        self.loss_fn = BCELoss()
+        self.loss_fn = loss()
 
     def forward(self, x):
         x = self.input_layer.forward(x)
@@ -93,8 +93,9 @@ class Model():
             x = layer.forward(x)
         return self.output_layer.forward(x)
     
-    def backward(self, y_true, y_pred):
-        d = self.output_layer.backward(y_true, y_pred)
+    def backward(self):
+        d_loss = self.loss_fn.backward()
+        d = self.output_layer.backward(d_loss)
         for layer in reversed(self.hidden_layers):
             d = layer.backward(d) # get backward output, and pass it to the prev layer
 
@@ -130,7 +131,7 @@ def test_train():
         for x, y in zip(X_data, y_data):
             y_pred = model.forward(x)
             total_loss += model.compute_loss(y, y_pred)
-            model.backward(y, y_pred)
+            model.backward()
             model.update(lr)
 
         if epoch % 10 == 0:
@@ -149,13 +150,13 @@ class Train:
         self.lr = lr
         
         self.X_train = [np.random.random([4, 1]) for _ in range(split_instances[0])]
-        self.y_train = [np.array([[float(np.random.randint(2))]]) for _ in range(split_instances[0])]
+        self.y_train = [np.array([[1.0 if x.sum() > 2 else 0.0]]) for x in self.X_train]
 
         self.X_val = [np.random.random([4, 1]) for _ in range(split_instances[1])]
-        self.y_val = [np.array([[float(np.random.randint(2))]]) for _ in range(split_instances[1])]
+        self.y_val =  [np.array([[1.0 if x.sum() > 2 else 0.0]]) for x in self.X_val]
 
         self.X_test = [np.random.random([4, 1]) for _ in range(split_instances[2])]
-        self.y_test = [np.array([[float(np.random.randint(2))]]) for _ in range(split_instances[2])]
+        self.y_test =  [np.array([[1.0 if x.sum() > 2 else 0.0]]) for x in self.X_test]
 
     def validate(self):
         total_loss = 0
@@ -177,7 +178,7 @@ class Train:
             for x, y in zip(self.X_train, self.y_train):
                 y_pred = self.model.forward(x)
                 total_loss += self.model.compute_loss(y, y_pred)
-                self.model.backward(y, y_pred)
+                self.model.backward()
                 self.model.update(self.lr)
             
             if epoch % 10 == 0:
