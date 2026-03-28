@@ -2,11 +2,36 @@
 import numpy as np
 
 
-def ReLU(x: np.array) -> np.array:
-    return np.maximum(0, x)
 
-def Sigmoid(x: np.array) -> np.array:
-    return 1 / (1 + np.exp(-x))
+class Activation:
+    def forward(self, z):
+        raise NotImplementedError
+    
+    def backward(self, d_out):
+        raise NotImplementedError
+    
+    def __call__(self, z):
+        return self.forward(z)
+    
+
+class ReLU(Activation):
+    def forward(self, z):
+        self.z = z # cache for backward
+        return np.maximum(0, z)
+
+    def backward(self, d_out):
+        return d_out * (self.z > 0).astype(float)
+
+
+class Sigmoid(Activation):
+    def forward(self, z):
+        self.out = 1 / (1 + np.exp(-z)) # cache for backward
+        return self.out
+
+    def backward(self, d_out):
+        return d_out * self.out * (1 - self.out)
+
+
 
 def Tanh(x: np.array) -> np.array:
     return np.tanh(x)
