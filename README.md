@@ -14,7 +14,7 @@ Implementing neural network architectures from scratch using only NumPy.
 
 ```
 activation_functions.py   # ReLU, Sigmoid (classes with forward/backward)
-losses.py                 # BCELoss, MSELoss (classes with forward/backward)
+losses.py                 # BCELoss (classes with forward/backward)
 binary_classifier.py      # Layers, Model, Train
 ```
 
