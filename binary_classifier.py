@@ -26,11 +26,34 @@ class HiddenLayer(Layer):
         self.activation = allowed_activations[activation]()
 
     def forward(self, y_in):
-        self.input = y_in
+        self.input = y_in # save for backward
         z = self.X @ y_in + self.b
         return self.activation.forward(z)   # activation stores z internally
 
     def backward(self, d_out):
+        '''
+        dL/dW = dL/dy_pred * dy_pred/dz * dz/dW
+            1. dL/dy_pred = -y/y_pred + (1-y)/(1-y_pred)
+            2. dy_pred/dz = sigmoid(z) * (1 - sigomoid(z)) -> Computed in activations_functions.py
+            3. dz/dW = x
+
+            d_out == dL/dy_pred -> Computed in losses.py or taken from previous layer 
+            d_z == dL/dy_pred * dy_pred/dz
+
+            
+        dL/db = dL/dy_pred * dy_pred/dz * dz/db
+            1. dL/dy_pred = -y/y_pred + (1-y)/(1-y_pred)
+            2. dy_pred/dz = sigmoid(z) * (1 - sigomoid(z)) -> Computed in activations_functions.py
+            3. dz/db = 1
+
+        What we send to the prev layer, the contrubtion of the input x to the loss dL/dx
+        dL/dx = dL/dy_pred * dy_pred/dz * dz/dx
+            1. dL/dy_pred = -y/y_pred + (1-y)/(1-y_pred)
+            2. dy_pred/dz = sigmoid(z) * (1 - sigomoid(z)) -> Computed in activations_functions.py
+            3. dz/dx = W
+        
+        WE WILL STORE AS SELF VARIABLES dX (dX == dW) and db and return dL/dx SO THAT THE PREV LAYER CAN TAKE IT
+        '''
         d_z = self.activation.backward(d_out)   # activation handles its own derivative
         self.dX = d_z @ self.input.T
         self.db = d_z
@@ -66,9 +89,9 @@ class OutputLayer(Layer):
     
     def backward(self, d_loss):
         d_z = self.activation.backward(d_loss)
-        self.dW = d_z @ self.input.T
-        self.db = d_z
-        return self.W.T @ d_z
+        self.dW = d_z @ self.input.T # dL/dW used to update weights
+        self.db = d_z # dL/db used to update bias
+        return self.W.T @ d_z # dL/dx passed back to the previous layer
     
     def update(self, lr):
         self.W -= lr * self.dW

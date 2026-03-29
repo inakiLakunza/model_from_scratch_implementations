@@ -19,5 +19,6 @@ class BCELoss(Loss):
         return -np.mean(y_true * np.log(y_pred + eps) + (1 - y_true) * np.log(1 - y_pred + eps))
 
     def backward(self):
+        # partial derivative of L with respect to y_pred 
         eps = 1e-8
-        return -(self.y_true / (self.y_pred + eps)) + (1 - self.y_true) / (1 - self.y_pred + eps)
+        return -(self.y_true / (self.y_pred + eps)) + (1 - self.y_true) / (1 - self.y_pred + eps) # = dL/dy_pred

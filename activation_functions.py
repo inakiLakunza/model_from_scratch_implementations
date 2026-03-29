@@ -20,6 +20,7 @@ class ReLU(Activation):
         return np.maximum(0, z)
 
     def backward(self, d_out):
+        # d_out * partial derivative of activation with respect to z
         return d_out * (self.z > 0).astype(float)
 
 
@@ -29,7 +30,8 @@ class Sigmoid(Activation):
         return self.out
 
     def backward(self, d_out):
-        return d_out * self.out * (1 - self.out)
+        # d_out * partial derivative of activation with respect to z
+        return d_out * self.out * (1 - self.out) # = d_out * dy_pred/dz = d_z
 
 
 
