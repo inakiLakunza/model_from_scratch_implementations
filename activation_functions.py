@@ -34,14 +34,21 @@ class Sigmoid(Activation):
         return d_out * self.out * (1 - self.out) # = d_out * dy_pred/dz = d_z
 
 
+class Softmax(Activation):
+    def forward(self, z):
+        z = z - np.max(z, axis=-1, keepdims=True)  # for numerical stability
+        e_z = np.exp(z)
+        self.out = e_z / e_z.sum(axis=-1, keepdims=True)  # cache for backward
+        return self.out
+
+    def backward(self, d_out):
+        dot = (d_out * self.out).sum(axis=-1, keepdims=True)  # sum(d_out_j * s_j)
+        return self.out * (d_out - dot)                        # s_i * (d_out_i - dot)
+
+
 
 def Tanh(x: np.array) -> np.array:
     return np.tanh(x)
 
 def GELU(x: np.array) -> np.array:
     return 0.5 * x * (1 + np.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * x**3)))
-
-def Softmax(x):
-    x = x - np.max(x, axis=-1, keepdims=True) # for numerical stability
-    e_x = np.exp(x)
-    return e_x / np.sum(e_x, axis=-1, keepdims=True)

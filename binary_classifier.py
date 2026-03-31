@@ -28,7 +28,7 @@ class HiddenLayer(Layer):
     def forward(self, y_in):
         self.input = y_in # save for backward
         z = self.X @ y_in + self.b
-        return self.activation.forward(z)   # activation stores z internally
+        return self.activation.forward(z) # activation stores z internally
 
     def backward(self, d_out):
         '''
@@ -56,7 +56,7 @@ class HiddenLayer(Layer):
         '''
         d_z = self.activation.backward(d_out)   # activation handles its own derivative
         self.dX = d_z @ self.input.T
-        self.db = d_z
+        self.db = d_z.sum(axis=1, keepdims=True)
         return self.X.T @ d_z
     
     def update(self, lr):
@@ -90,7 +90,7 @@ class OutputLayer(Layer):
     def backward(self, d_loss):
         d_z = self.activation.backward(d_loss)
         self.dW = d_z @ self.input.T # dL/dW used to update weights
-        self.db = d_z # dL/db used to update bias
+        self.db = d_z.sum(axis=1, keepdims=True) # dL/db used to update bias
         return self.W.T @ d_z # dL/dx passed back to the previous layer
     
     def update(self, lr):
@@ -172,14 +172,22 @@ class Train:
         self.n_epochs = n_epochs
         self.lr = lr
         
-        self.X_train = [np.random.random([4, 1]) for _ in range(split_instances[0])]
-        self.y_train = [np.array([[1.0 if x.sum() > 2 else 0.0]]) for x in self.X_train]
+        self.X_train = [np.random.random([4, 1]) for _ in range(split_instances[0])] # [N_train, 4, 1]
+        self.y_train = [np.array([[1.0 if x.sum() > 2 or x.sum() < - 2 or (x.sum() > -0.5 and x.sum() < 0.5) else 0.0]]) for x in self.X_train] # [N_train, 1, 1]
 
         self.X_val = [np.random.random([4, 1]) for _ in range(split_instances[1])]
-        self.y_val =  [np.array([[1.0 if x.sum() > 2 else 0.0]]) for x in self.X_val]
+        self.y_val =  [np.array([[1.0 if x.sum() > 2 or x.sum() < - 2 or (x.sum() > -0.5 and x.sum() < 0.5) else 0.0]]) for x in self.X_val]
 
         self.X_test = [np.random.random([4, 1]) for _ in range(split_instances[2])]
-        self.y_test =  [np.array([[1.0 if x.sum() > 2 else 0.0]]) for x in self.X_test]
+        self.y_test =  [np.array([[1.0 if x.sum() > 2 or x.sum() < - 2 or (x.sum() > -0.5 and x.sum() < 0.5) else 0.0]]) for x in self.X_test]
+
+    def get_batches(self, X, y, batch_size):
+        indices = np.random.permutation(len(X))
+        for start in range(0, len(X), batch_size):
+            idx = indices[start:start + batch_size]
+            X_batch = np.hstack([X[i] for i in idx])   # [4, B]
+            y_batch = np.hstack([y[i] for i in idx])   # [1, B]
+            yield X_batch, y_batch
 
     def validate(self):
         total_loss = 0
@@ -195,14 +203,16 @@ class Train:
             total_loss += self.model.compute_loss(y, y_pred)
         print(f"Test Loss: {total_loss/len(self.X_test):.4f}")
 
-    def train(self):
+    def train(self, batch_size=32):
         for epoch in range(self.n_epochs):
             total_loss = 0
-            for x, y in zip(self.X_train, self.y_train):
-                y_pred = self.model.forward(x)
-                total_loss += self.model.compute_loss(y, y_pred)
+            n_batches = 0
+            for X_batch, y_batch in self.get_batches(self.X_train, self.y_train, batch_size):
+                y_pred = self.model.forward(X_batch)
+                total_loss += self.model.compute_loss(y_batch, y_pred)
                 self.model.backward()
                 self.model.update(self.lr)
+                n_batches += 1
             
             if epoch % 10 == 0:
                 print(f"Epoch {epoch:3d} | Train Loss: {total_loss/len(self.X_train):.4f}")

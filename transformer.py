@@ -60,9 +60,13 @@ class Linear:
     def forward(self, x):
         # x: [B, block, dim]
         # W: [dim, dim]
+        self.x = x # cache for backward
         out = x @ self.W.T
         out = out + self.b
         return out
+    
+    def backward(self, d_out):
+        pass
 
 
 class FeedForward:
@@ -70,12 +74,13 @@ class FeedForward:
     def __init__(self, dim):
         self.upscale = Linear(dim, dim * 4)
         self.downscale = Linear(dim * 4, dim)
+        self.relu = ReLU()
 
     def forward(self, x):
         # x: [B, block, dim=512]
         out = self.upscale.forward(x)
         # out: [B, block, 2048]
-        out = ReLU(out)
+        out = self.relu.forward(out)
         out = self.downscale.forward(out)
         # out: [B, block, 2048]
         return out
@@ -86,6 +91,7 @@ class Head:
     def __init__(self, dim, n_heads):
         self.dim = dim
         self.head_dim = dim // n_heads
+        self.softmax = Softmax()
 
         self.Wq = np.random.uniform(-0.5, 0.5, [self.dim, self.head_dim])
         self.Wk = np.random.uniform(-0.5, 0.5, [self.dim, self.head_dim])
@@ -111,7 +117,7 @@ class Head:
             e = np.where(causal_mask, -np.inf, e)
 
         # softmax
-        e = Softmax(e)
+        e = self.softmax.forward(e)
 
         # attention
         # e: [B, block, block]
@@ -170,6 +176,7 @@ class Model:
         self.blocks = [Block(dim) for _ in range(n_blocks)]
         self.norm = LayerNorm(dim)
         self.linear = Linear(dim, vocab_size)
+        self.softmax = Softmax()
 
     def forward(self, x):
         # x: [B, block]
@@ -190,7 +197,7 @@ class Model:
             logits = self.forward(context)
             logits = logits[:, -1, :] # last token
 
-            probs = Softmax(logits)
+            probs = self.softmax.forward(logits)
             next_token = np.random.choice(len(probs[0]), p=probs[0])
 
             tokens = np.concatenate(
@@ -216,7 +223,7 @@ def cross_entropy_loss(logits, targets):
     logits_flat = logits.reshape(N, V)
     targets_flat = targets.reshape(N)
 
-    logits_flast -= logits_flat.max(axis=-1, keepdims=True)
+    logits_flat -= logits_flat.max(axis=-1, keepdims=True)
 
     exp = np.exp(logits_flat)
     probs = exp / exp.sum(axis=-1, keepdims=True) # [N, V]
